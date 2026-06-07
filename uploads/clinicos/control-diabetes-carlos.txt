@@ -1,0 +1,3 @@
+MediClinic - Control Diabetes
+Paciente: Carlos Ramos
+Resultado: Control de glucosa para seguimiento.

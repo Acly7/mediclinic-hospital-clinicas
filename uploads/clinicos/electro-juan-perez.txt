@@ -1,0 +1,3 @@
+MediClinic - Electrocardiograma
+Paciente: Juan Pérez
+Resultado: Ritmo sinusal, sin signos de alarma.

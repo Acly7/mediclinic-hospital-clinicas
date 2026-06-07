@@ -1,0 +1,3 @@
+MediClinic - Hemograma
+Paciente: Mateo Gutiérrez
+Resultado: Leucocitos levemente elevados.
