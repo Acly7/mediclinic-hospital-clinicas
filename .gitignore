@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+frontend/node_modules/
+
+# Variables de entorno
+.env
+backend_python/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Archivos temporales
+*.tmp
+*.bak
