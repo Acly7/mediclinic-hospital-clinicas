@@ -86,7 +86,9 @@ def full_name(row: Dict[str, Any]) -> str:
     return f"{row.get('nombre', '')} {row.get('apellido', '')}".strip()
 
 
-def log_activity(usuario_id: Optional[int], modulo: str, accion: str, detalle: str) -> None:
+def log_activity(
+    usuario_id: Optional[int], modulo: str, accion: str, detalle: str
+) -> None:
     try:
         db_query(
             "INSERT INTO logs_actividad (usuario_id, modulo, accion, detalle) VALUES (%s,%s,%s,%s)",
@@ -104,14 +106,18 @@ def normalize_text(value: str) -> str:
 def validate_name(value: str, label: str) -> str:
     value = normalize_text(value)
     if not re.fullmatch(r"[A-Za-zÁÉÍÓÚáéíóúÑñ ]{2,80}", value):
-        raise HTTPException(status_code=400, detail=f"{label} solo debe contener letras y espacios.")
+        raise HTTPException(
+            status_code=400, detail=f"{label} solo debe contener letras y espacios."
+        )
     return " ".join(part.capitalize() for part in value.split())
 
 
 def validate_ci(value: str) -> str:
     value = str(value or "").strip()
     if not re.fullmatch(r"\d{5,12}", value):
-        raise HTTPException(status_code=400, detail="El CI debe tener entre 5 y 12 dígitos.")
+        raise HTTPException(
+            status_code=400, detail="El CI debe tener entre 5 y 12 dígitos."
+        )
     return value
 
 
@@ -119,27 +125,43 @@ def parse_date(value: str, label: str = "Fecha") -> date:
     try:
         return date.fromisoformat(str(value)[:10])
     except Exception:
-        raise HTTPException(status_code=400, detail=f"{label} no tiene un formato válido.")
+        raise HTTPException(
+            status_code=400, detail=f"{label} no tiene un formato válido."
+        )
 
 
 def parse_time(value: str) -> time:
     try:
         return time.fromisoformat(str(value)[:5])
     except Exception:
-        raise HTTPException(status_code=400, detail="La hora no tiene un formato válido.")
+        raise HTTPException(
+            status_code=400, detail="La hora no tiene un formato válido."
+        )
 
 
 def date_to_weekday_es(d: date) -> str:
-    return ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][d.weekday()]
+    return ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][
+        d.weekday()
+    ]
 
 
 DEFAULT_APPOINTMENT_SCHEDULES = [
-    {"hora_inicio": time(8, 0), "hora_fin": time(12, 0), "consultorio": "Consultorio general"},
-    {"hora_inicio": time(14, 0), "hora_fin": time(18, 0), "consultorio": "Consultorio general"},
+    {
+        "hora_inicio": time(8, 0),
+        "hora_fin": time(12, 0),
+        "consultorio": "Consultorio general",
+    },
+    {
+        "hora_inicio": time(14, 0),
+        "hora_fin": time(18, 0),
+        "consultorio": "Consultorio general",
+    },
 ]
 
 
-def available_slots_for_doctor(medico_id: int, fecha_value: date, exclude_id: Optional[int] = None) -> Dict[str, Any]:
+def available_slots_for_doctor(
+    medico_id: int, fecha_value: date, exclude_id: Optional[int] = None
+) -> Dict[str, Any]:
     day = date_to_weekday_es(fecha_value)
     schedules = db_query(
         "SELECT * FROM horarios_medicos WHERE medico_id=%s AND dia_semana=%s ORDER BY hora_inicio",
@@ -166,30 +188,50 @@ def available_slots_for_doctor(medico_id: int, fecha_value: date, exclude_id: Op
         current = start
         while current < end:
             hour = current.time().strftime("%H:%M")
-            slots.append({
-                "hora": hour,
-                "ocupado": hour in occupied_set,
-                "consultorio": schedule.get("consultorio"),
-            })
+            slots.append(
+                {
+                    "hora": hour,
+                    "ocupado": hour in occupied_set,
+                    "consultorio": schedule.get("consultorio"),
+                }
+            )
             current += timedelta(minutes=30)
     return {"dia": day, "horarios": schedules, "slots": slots}
 
 
-def ensure_available_appointment(medico_id: int, fecha_value: date, hora_value: time, exclude_id: Optional[int] = None) -> None:
+def ensure_available_appointment(
+    medico_id: int,
+    fecha_value: date,
+    hora_value: time,
+    exclude_id: Optional[int] = None,
+) -> None:
     if fecha_value < date.today():
-        raise HTTPException(status_code=400, detail="No se puede agendar una cita en una fecha anterior a hoy.")
-    doctor = db_query("SELECT estado FROM medicos WHERE id=%s", [medico_id], fetch="one")
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede agendar una cita en una fecha anterior a hoy.",
+        )
+    doctor = db_query(
+        "SELECT estado FROM medicos WHERE id=%s", [medico_id], fetch="one"
+    )
     if not doctor:
         raise HTTPException(status_code=404, detail="El médico seleccionado no existe.")
     if doctor["estado"] != "Disponible":
-        raise HTTPException(status_code=400, detail="El médico seleccionado no se encuentra disponible.")
+        raise HTTPException(
+            status_code=400, detail="El médico seleccionado no se encuentra disponible."
+        )
     availability = available_slots_for_doctor(medico_id, fecha_value, exclude_id)
     available = [s["hora"] for s in availability["slots"] if not s["ocupado"]]
     hour = hora_value.strftime("%H:%M")
     if hour not in available:
         if availability["slots"]:
-            raise HTTPException(status_code=400, detail=f"Ese horario no está disponible. Horarios libres: {', '.join(available) or 'ninguno'}.")
-        raise HTTPException(status_code=400, detail=f"El médico no atiende el día {availability['dia']}.")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ese horario no está disponible. Horarios libres: {', '.join(available) or 'ninguno'}.",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"El médico no atiende el día {availability['dia']}.",
+        )
 
 
 @app.exception_handler(Exception)
@@ -202,13 +244,20 @@ async def global_exception_handler(_request: Request, exc: Exception):
     if getattr(exc, "pgcode", None) == "23505":
         status = 409
         message = "Ya existe un registro con esos datos únicos."
-    return JSONResponse(status_code=status, content={"message": message, "detail": detail})
+    return JSONResponse(
+        status_code=status, content={"message": message, "detail": detail}
+    )
 
 
 @app.get("/api/health")
 def health():
     row = db_query("SELECT NOW() AS now", fetch="one")
-    return {"ok": True, "service": "MediClinic API Python", "version": "3.0.0", "databaseTime": row["now"]}
+    return {
+        "ok": True,
+        "service": "MediClinic API Python",
+        "version": "3.0.0",
+        "databaseTime": row["now"],
+    }
 
 
 @app.post("/api/auth/login")
@@ -217,7 +266,9 @@ async def login(request: Request):
     correo = data.get("correo")
     password = data.get("password")
     if not correo or not password:
-        raise HTTPException(status_code=400, detail="Correo y contraseña son obligatorios.")
+        raise HTTPException(
+            status_code=400, detail="Correo y contraseña son obligatorios."
+        )
 
     user = db_query(
         """
@@ -240,7 +291,12 @@ async def login(request: Request):
 
 
 @app.get("/api/dashboard")
-def dashboard(usuario_id: Optional[str] = None, rol: str = "Administrador", paciente_id: Optional[str] = None, medico_id: Optional[str] = None):
+def dashboard(
+    usuario_id: Optional[str] = None,
+    rol: str = "Administrador",
+    paciente_id: Optional[str] = None,
+    medico_id: Optional[str] = None,
+):
     cards = db_query(
         """
         SELECT
@@ -282,7 +338,9 @@ def dashboard(usuario_id: Optional[str] = None, rol: str = "Administrador", paci
         ORDER BY total DESC
         """
     )
-    by_status = db_query("SELECT estado, COUNT(*)::int AS total FROM citas GROUP BY estado ORDER BY estado")
+    by_status = db_query(
+        "SELECT estado, COUNT(*)::int AS total FROM citas GROUP BY estado ORDER BY estado"
+    )
     critical = db_query(
         """
         SELECT codigo, nombre, presentacion, stock, stock_minimo, estado
@@ -346,7 +404,9 @@ def patient_detail(patient_id: int):
     )
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado.")
-    record = db_query("SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one")
+    record = db_query(
+        "SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one"
+    )
     return {"paciente": patient, "expediente": record}
 
 
@@ -358,18 +418,40 @@ async def create_patient(request: Request):
     ci = validate_ci(data.get("ci"))
     birth = parse_date(data.get("fecha_nacimiento"), "Fecha de nacimiento")
     if birth >= date.today():
-        raise HTTPException(status_code=400, detail="La fecha de nacimiento debe ser anterior a hoy.")
+        raise HTTPException(
+            status_code=400, detail="La fecha de nacimiento debe ser anterior a hoy."
+        )
     patient = db_query(
         """
         INSERT INTO pacientes (nombre, apellido, ci, fecha_nacimiento, celular, direccion, tipo_sangre, alergias, antecedentes, estado)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
         """,
-        [nombre, apellido, ci, birth, data.get("celular"), data.get("direccion"), data.get("tipo_sangre"), data.get("alergias"), data.get("antecedentes"), data.get("estado", "Activo")],
+        [
+            nombre,
+            apellido,
+            ci,
+            birth,
+            data.get("celular"),
+            data.get("direccion"),
+            data.get("tipo_sangre"),
+            data.get("alergias"),
+            data.get("antecedentes"),
+            data.get("estado", "Activo"),
+        ],
         fetch="one",
     )
     code = f"EXP-{date.today().year}-{patient['id']:04d}"
-    db_query("INSERT INTO expedientes (paciente_id, codigo, observaciones_generales) VALUES (%s,%s,%s)", [patient["id"], code, "Expediente creado automáticamente."], fetch="none")
-    log_activity(data.get("usuario_id"), "Pacientes", "Registro", f"Se registró al paciente {nombre} {apellido}.")
+    db_query(
+        "INSERT INTO expedientes (paciente_id, codigo, observaciones_generales) VALUES (%s,%s,%s)",
+        [patient["id"], code, "Expediente creado automáticamente."],
+        fetch="none",
+    )
+    log_activity(
+        data.get("usuario_id"),
+        "Pacientes",
+        "Registro",
+        f"Se registró al paciente {nombre} {apellido}.",
+    )
     return created(patient)
 
 
@@ -381,34 +463,64 @@ async def update_patient(patient_id: int, request: Request):
     ci = validate_ci(data.get("ci"))
     birth = parse_date(data.get("fecha_nacimiento"), "Fecha de nacimiento")
     if birth >= date.today():
-        raise HTTPException(status_code=400, detail="La fecha de nacimiento debe ser anterior a hoy.")
+        raise HTTPException(
+            status_code=400, detail="La fecha de nacimiento debe ser anterior a hoy."
+        )
     patient = db_query(
         """
         UPDATE pacientes SET nombre=%s, apellido=%s, ci=%s, fecha_nacimiento=%s, celular=%s, direccion=%s, tipo_sangre=%s, alergias=%s, antecedentes=%s, estado=%s
         WHERE id=%s RETURNING *
         """,
-        [nombre, apellido, ci, birth, data.get("celular"), data.get("direccion"), data.get("tipo_sangre"), data.get("alergias"), data.get("antecedentes"), data.get("estado", "Activo"), patient_id],
+        [
+            nombre,
+            apellido,
+            ci,
+            birth,
+            data.get("celular"),
+            data.get("direccion"),
+            data.get("tipo_sangre"),
+            data.get("alergias"),
+            data.get("antecedentes"),
+            data.get("estado", "Activo"),
+            patient_id,
+        ],
         fetch="one",
     )
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado.")
-    log_activity(data.get("usuario_id"), "Pacientes", "Actualización", f"Se actualizó al paciente {nombre} {apellido}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Pacientes",
+        "Actualización",
+        f"Se actualizó al paciente {nombre} {apellido}.",
+    )
     return patient
 
 
 @app.patch("/api/patients/{patient_id}/status")
 async def patient_status(patient_id: int, request: Request):
     data = await request.json()
-    patient = db_query("UPDATE pacientes SET estado=%s WHERE id=%s RETURNING *", [data.get("estado"), patient_id], fetch="one")
+    patient = db_query(
+        "UPDATE pacientes SET estado=%s WHERE id=%s RETURNING *",
+        [data.get("estado"), patient_id],
+        fetch="one",
+    )
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado.")
-    log_activity(data.get("usuario_id"), "Pacientes", "Cambio de estado", f"Paciente {patient['nombre']} {patient['apellido']} ahora está {patient['estado']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Pacientes",
+        "Cambio de estado",
+        f"Paciente {patient['nombre']} {patient['apellido']} ahora está {patient['estado']}.",
+    )
     return patient
 
 
 @app.get("/api/specialties")
 def specialties():
-    return db_query("SELECT * FROM especialidades WHERE estado='Activo' ORDER BY nombre")
+    return db_query(
+        "SELECT * FROM especialidades WHERE estado='Activo' ORDER BY nombre"
+    )
 
 
 @app.get("/api/doctors")
@@ -440,10 +552,24 @@ async def create_doctor(request: Request):
         INSERT INTO medicos (especialidad_id,nombre,apellido,ci,correo,telefono,nro_matricula,estado)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
         """,
-        [data.get("especialidad_id"), nombre, apellido, ci, data.get("correo"), data.get("telefono"), data.get("nro_matricula"), data.get("estado", "Disponible")],
+        [
+            data.get("especialidad_id"),
+            nombre,
+            apellido,
+            ci,
+            data.get("correo"),
+            data.get("telefono"),
+            data.get("nro_matricula"),
+            data.get("estado", "Disponible"),
+        ],
         fetch="one",
     )
-    log_activity(data.get("usuario_id"), "Médicos", "Registro", f"Se registró al Dr(a). {nombre} {apellido}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Médicos",
+        "Registro",
+        f"Se registró al Dr(a). {nombre} {apellido}.",
+    )
     return created(doctor)
 
 
@@ -458,22 +584,46 @@ async def update_doctor(doctor_id: int, request: Request):
         UPDATE medicos SET especialidad_id=%s,nombre=%s,apellido=%s,ci=%s,correo=%s,telefono=%s,nro_matricula=%s,estado=%s
         WHERE id=%s RETURNING *
         """,
-        [data.get("especialidad_id"), nombre, apellido, ci, data.get("correo"), data.get("telefono"), data.get("nro_matricula"), data.get("estado", "Disponible"), doctor_id],
+        [
+            data.get("especialidad_id"),
+            nombre,
+            apellido,
+            ci,
+            data.get("correo"),
+            data.get("telefono"),
+            data.get("nro_matricula"),
+            data.get("estado", "Disponible"),
+            doctor_id,
+        ],
         fetch="one",
     )
     if not doctor:
         raise HTTPException(status_code=404, detail="Médico no encontrado.")
-    log_activity(data.get("usuario_id"), "Médicos", "Actualización", f"Se actualizó al Dr(a). {nombre} {apellido}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Médicos",
+        "Actualización",
+        f"Se actualizó al Dr(a). {nombre} {apellido}.",
+    )
     return doctor
 
 
 @app.patch("/api/doctors/{doctor_id}/status")
 async def doctor_status(doctor_id: int, request: Request):
     data = await request.json()
-    doctor = db_query("UPDATE medicos SET estado=%s WHERE id=%s RETURNING *", [data.get("estado"), doctor_id], fetch="one")
+    doctor = db_query(
+        "UPDATE medicos SET estado=%s WHERE id=%s RETURNING *",
+        [data.get("estado"), doctor_id],
+        fetch="one",
+    )
     if not doctor:
         raise HTTPException(status_code=404, detail="Médico no encontrado.")
-    log_activity(data.get("usuario_id"), "Médicos", "Cambio de estado", f"El médico {doctor['nombre']} {doctor['apellido']} ahora está {doctor['estado']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Médicos",
+        "Cambio de estado",
+        f"El médico {doctor['nombre']} {doctor['apellido']} ahora está {doctor['estado']}.",
+    )
     return doctor
 
 
@@ -497,21 +647,32 @@ def appointments(
     params: List[Any] = []
     where = "WHERE 1=1"
     if fecha:
-        where += " AND c.fecha=%s"; params.append(fecha)
+        where += " AND c.fecha=%s"
+        params.append(fecha)
     if estado:
-        where += " AND c.estado=%s"; params.append(estado)
+        where += " AND c.estado=%s"
+        params.append(estado)
     if medico_id:
-        where += " AND c.medico_id=%s"; params.append(medico_id)
+        where += " AND c.medico_id=%s"
+        params.append(medico_id)
     if paciente_id:
-        where += " AND c.paciente_id=%s"; params.append(paciente_id)
+        where += " AND c.paciente_id=%s"
+        params.append(paciente_id)
     if especialidad_id:
-        where += " AND c.especialidad_id=%s"; params.append(especialidad_id)
+        where += " AND c.especialidad_id=%s"
+        params.append(especialidad_id)
     if hora:
-        where += " AND c.hora=%s"; params.append(hora)
+        where += " AND c.hora=%s"
+        params.append(hora)
     if search:
         where += " AND (p.nombre ILIKE %s OR p.apellido ILIKE %s OR p.ci ILIKE %s OR m.nombre ILIKE %s OR m.apellido ILIKE %s)"
-        term = f"%{search}%"; params += [term, term, term, term, term]
-    order = "c.fecha DESC, c.hora DESC, c.creado_en DESC" if sort == "recientes" else "c.fecha ASC, c.hora ASC"
+        term = f"%{search}%"
+        params += [term, term, term, term, term]
+    order = (
+        "c.fecha DESC, c.hora DESC, c.creado_en DESC"
+        if sort == "recientes"
+        else "c.fecha ASC, c.hora ASC"
+    )
     return db_query(
         f"""
         SELECT c.*, p.nombre AS paciente_nombre, p.apellido AS paciente_apellido, p.ci AS paciente_ci,
@@ -534,29 +695,75 @@ async def create_appointment(request: Request):
     hora_value = parse_time(data.get("hora"))
     for field in ["paciente_id", "medico_id", "especialidad_id"]:
         if not data.get(field):
-            raise HTTPException(status_code=400, detail="Paciente, médico, especialidad, fecha y hora son obligatorios.")
+            raise HTTPException(
+                status_code=400,
+                detail="Paciente, médico, especialidad, fecha y hora son obligatorios.",
+            )
     ensure_available_appointment(int(data["medico_id"]), fecha_value, hora_value)
     cita = db_query(
         """
         INSERT INTO citas (paciente_id, medico_id, especialidad_id, fecha, hora, motivo, estado, creado_por)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
         """,
-        [data.get("paciente_id"), data.get("medico_id"), data.get("especialidad_id"), fecha_value, hora_value, data.get("motivo"), data.get("estado", "Pendiente"), data.get("usuario_id")],
+        [
+            data.get("paciente_id"),
+            data.get("medico_id"),
+            data.get("especialidad_id"),
+            fecha_value,
+            hora_value,
+            data.get("motivo"),
+            data.get("estado", "Pendiente"),
+            data.get("usuario_id"),
+        ],
         fetch="one",
     )
-    patient = db_query("SELECT nombre, apellido, celular FROM pacientes WHERE id=%s", [data.get("paciente_id")], fetch="one")
-    spec = db_query("SELECT nombre FROM especialidades WHERE id=%s", [data.get("especialidad_id")], fetch="one")
+    patient = db_query(
+        "SELECT nombre, apellido, celular FROM pacientes WHERE id=%s",
+        [data.get("paciente_id")],
+        fetch="one",
+    )
+    spec = db_query(
+        "SELECT nombre FROM especialidades WHERE id=%s",
+        [data.get("especialidad_id")],
+        fetch="one",
+    )
     msg = f"Estimado paciente, recuerde su cita de {spec['nombre']} el {fecha_value.strftime('%d/%m/%Y')} a horas {hora_value.strftime('%H:%M')}."
     notif = db_query(
         """
         INSERT INTO notificaciones (paciente_id, cita_id, destinatario, asunto, mensaje, canal, estado, tipo, leida)
         VALUES (%s,%s,%s,%s,%s,'Correo simulado','Pendiente','RECORDATORIO_CITA',false) RETURNING *
         """,
-        [data.get("paciente_id"), cita["id"], f"{patient['celular']}@correo-simulado.bo", "Recordatorio de cita médica", msg],
+        [
+            data.get("paciente_id"),
+            cita["id"],
+            f"{patient['celular']}@correo-simulado.bo",
+            "Recordatorio de cita médica",
+            msg,
+        ],
         fetch="one",
     )
-    db_query("INSERT INTO cola_mensajes (tipo, referencia_id, payload) VALUES (%s,%s,%s)", ["RECORDATORIO_CITA", notif["id"], json.dumps({"cita_id": cita["id"], "paciente": full_name(patient), "fecha": str(fecha_value), "hora": hora_value.strftime("%H:%M")})], fetch="none")
-    log_activity(data.get("usuario_id"), "Citas", "Agenda", f"Se agendó cita para {patient['nombre']} {patient['apellido']}.")
+    db_query(
+        "INSERT INTO cola_mensajes (tipo, referencia_id, payload) VALUES (%s,%s,%s)",
+        [
+            "RECORDATORIO_CITA",
+            notif["id"],
+            json.dumps(
+                {
+                    "cita_id": cita["id"],
+                    "paciente": full_name(patient),
+                    "fecha": str(fecha_value),
+                    "hora": hora_value.strftime("%H:%M"),
+                }
+            ),
+        ],
+        fetch="none",
+    )
+    log_activity(
+        data.get("usuario_id"),
+        "Citas",
+        "Agenda",
+        f"Se agendó cita para {patient['nombre']} {patient['apellido']}.",
+    )
     return created(cita)
 
 
@@ -565,18 +772,34 @@ async def update_appointment(appointment_id: int, request: Request):
     data = await request.json()
     fecha_value = parse_date(data.get("fecha"))
     hora_value = parse_time(data.get("hora"))
-    ensure_available_appointment(int(data["medico_id"]), fecha_value, hora_value, exclude_id=appointment_id)
+    ensure_available_appointment(
+        int(data["medico_id"]), fecha_value, hora_value, exclude_id=appointment_id
+    )
     cita = db_query(
         """
         UPDATE citas SET paciente_id=%s, medico_id=%s, especialidad_id=%s, fecha=%s, hora=%s, motivo=%s, estado=%s
         WHERE id=%s RETURNING *
         """,
-        [data.get("paciente_id"), data.get("medico_id"), data.get("especialidad_id"), fecha_value, hora_value, data.get("motivo"), data.get("estado", "Pendiente"), appointment_id],
+        [
+            data.get("paciente_id"),
+            data.get("medico_id"),
+            data.get("especialidad_id"),
+            fecha_value,
+            hora_value,
+            data.get("motivo"),
+            data.get("estado", "Pendiente"),
+            appointment_id,
+        ],
         fetch="one",
     )
     if not cita:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
-    log_activity(data.get("usuario_id"), "Citas", "Actualización", f"Se actualizó la cita #{appointment_id}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Citas",
+        "Actualización",
+        f"Se actualizó la cita #{appointment_id}.",
+    )
     return cita
 
 
@@ -586,10 +809,19 @@ async def appointment_status(appointment_id: int, request: Request):
     status = data.get("estado")
     if status not in ["Pendiente", "Confirmada", "Atendida", "Cancelada"]:
         raise HTTPException(status_code=400, detail="Estado de cita inválido.")
-    cita = db_query("UPDATE citas SET estado=%s WHERE id=%s RETURNING *", [status, appointment_id], fetch="one")
+    cita = db_query(
+        "UPDATE citas SET estado=%s WHERE id=%s RETURNING *",
+        [status, appointment_id],
+        fetch="one",
+    )
     if not cita:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
-    log_activity(data.get("usuario_id"), "Citas", "Cambio de estado", f"La cita #{appointment_id} cambió a {status}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Citas",
+        "Cambio de estado",
+        f"La cita #{appointment_id} cambió a {status}.",
+    )
     return cita
 
 
@@ -615,7 +847,9 @@ def medical_record(patient_id: int):
         [patient_id],
         fetch="one",
     )
-    expediente = db_query("SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one")
+    expediente = db_query(
+        "SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one"
+    )
     if not patient or not expediente:
         raise HTTPException(status_code=404, detail="Expediente no encontrado.")
     consultas = db_query(
@@ -646,8 +880,18 @@ def medical_record(patient_id: int):
         """,
         [expediente["id"]],
     )
-    archivos = db_query("SELECT * FROM archivos_clinicos WHERE expediente_id=%s ORDER BY creado_en DESC", [expediente["id"]])
-    return {"paciente": patient, "expediente": expediente, "consultas": consultas, "recetas": recetas, "examenes": examenes, "archivos": archivos}
+    archivos = db_query(
+        "SELECT * FROM archivos_clinicos WHERE expediente_id=%s ORDER BY creado_en DESC",
+        [expediente["id"]],
+    )
+    return {
+        "paciente": patient,
+        "expediente": expediente,
+        "consultas": consultas,
+        "recetas": recetas,
+        "examenes": examenes,
+        "archivos": archivos,
+    }
 
 
 @app.post("/api/consultations")
@@ -656,8 +900,12 @@ async def create_consultation(request: Request):
     patient_id = data.get("paciente_id")
     medico_id = data.get("medico_id")
     if not patient_id or not medico_id or not data.get("diagnostico"):
-        raise HTTPException(status_code=400, detail="Paciente, médico y diagnóstico son obligatorios.")
-    expediente = db_query("SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one")
+        raise HTTPException(
+            status_code=400, detail="Paciente, médico y diagnóstico son obligatorios."
+        )
+    expediente = db_query(
+        "SELECT * FROM expedientes WHERE paciente_id=%s", [patient_id], fetch="one"
+    )
     if not expediente:
         raise HTTPException(status_code=404, detail="El paciente no tiene expediente.")
     consulta = db_query(
@@ -665,46 +913,93 @@ async def create_consultation(request: Request):
         INSERT INTO consultas (expediente_id, cita_id, medico_id, diagnostico, tratamiento, observaciones)
         VALUES (%s,%s,%s,%s,%s,%s) RETURNING *
         """,
-        [expediente["id"], data.get("cita_id"), medico_id, data.get("diagnostico"), data.get("tratamiento"), data.get("observaciones")],
+        [
+            expediente["id"],
+            data.get("cita_id"),
+            medico_id,
+            data.get("diagnostico"),
+            data.get("tratamiento"),
+            data.get("observaciones"),
+        ],
         fetch="one",
     )
     meds = data.get("medicamentos") or []
     receta = None
     if meds:
-        receta = db_query("INSERT INTO recetas (consulta_id, indicaciones, pdf_url) VALUES (%s,%s,%s) RETURNING *", [consulta["id"], data.get("indicaciones", "Receta generada desde expediente clínico."), f"/uploads/clinicos/receta-{consulta['id']}.txt"], fetch="one")
+        receta = db_query(
+            "INSERT INTO recetas (consulta_id, indicaciones, pdf_url) VALUES (%s,%s,%s) RETURNING *",
+            [
+                consulta["id"],
+                data.get("indicaciones", "Receta generada desde expediente clínico."),
+                f"/uploads/clinicos/receta-{consulta['id']}.txt",
+            ],
+            fetch="one",
+        )
         for item in meds:
             db_query(
                 "INSERT INTO receta_detalle (receta_id, medicamento_id, dosis, frecuencia, dias, cantidad) VALUES (%s,%s,%s,%s,%s,%s)",
-                [receta["id"], item.get("medicamento_id"), item.get("dosis"), item.get("frecuencia"), item.get("dias") or 1, item.get("cantidad") or 1],
+                [
+                    receta["id"],
+                    item.get("medicamento_id"),
+                    item.get("dosis"),
+                    item.get("frecuencia"),
+                    item.get("dias") or 1,
+                    item.get("cantidad") or 1,
+                ],
                 fetch="none",
             )
-        farmacia = db_query("SELECT id FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE r.nombre='Farmacia' AND u.estado='Activo' ORDER BY u.id LIMIT 1", fetch="one")
+        farmacia = db_query(
+            "SELECT id FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE r.nombre='Farmacia' AND u.estado='Activo' ORDER BY u.id LIMIT 1",
+            fetch="one",
+        )
         if farmacia:
-            patient = db_query("SELECT nombre, apellido FROM pacientes WHERE id=%s", [patient_id], fetch="one")
+            patient = db_query(
+                "SELECT nombre, apellido FROM pacientes WHERE id=%s",
+                [patient_id],
+                fetch="one",
+            )
             db_query(
                 """
                 INSERT INTO notificaciones (usuario_destino_id, paciente_id, destinatario, asunto, mensaje, canal, estado, tipo, leida)
                 VALUES (%s,%s,%s,%s,%s,'Sistema interno','Enviada','RECETA_FARMACIA',false)
                 """,
-                [farmacia["id"], patient_id, "Farmacia", "Nueva receta médica", f"El Dr(a). registró una receta para {full_name(patient)}. Revisar medicamentos solicitados."],
+                [
+                    farmacia["id"],
+                    patient_id,
+                    "Farmacia",
+                    "Nueva receta médica",
+                    f"El Dr(a). registró una receta para {full_name(patient)}. Revisar medicamentos solicitados.",
+                ],
                 fetch="none",
             )
-    log_activity(data.get("usuario_id"), "Expediente clínico", "Consulta", "Se registró diagnóstico, tratamiento y receta clínica.")
+    log_activity(
+        data.get("usuario_id"),
+        "Expediente clínico",
+        "Consulta",
+        "Se registró diagnóstico, tratamiento y receta clínica.",
+    )
     return created({"consulta": consulta, "receta": receta})
 
 
 @app.get("/api/medicines")
-def medicines(search: str = "", presentacion: str = "", estado: str = "", categoria: str = ""):
+def medicines(
+    search: str = "", presentacion: str = "", estado: str = "", categoria: str = ""
+):
     params: List[Any] = []
     where = "WHERE 1=1"
     if search:
-        term = f"%{search}%"; where += " AND (nombre ILIKE %s OR codigo ILIKE %s OR concentracion ILIKE %s)"; params += [term, term, term]
+        term = f"%{search}%"
+        where += " AND (nombre ILIKE %s OR codigo ILIKE %s OR concentracion ILIKE %s)"
+        params += [term, term, term]
     if presentacion:
-        where += " AND presentacion ILIKE %s"; params.append(f"%{presentacion}%")
+        where += " AND presentacion ILIKE %s"
+        params.append(f"%{presentacion}%")
     if estado:
-        where += " AND estado=%s"; params.append(estado)
+        where += " AND estado=%s"
+        params.append(estado)
     if categoria:
-        where += " AND categoria ILIKE %s"; params.append(f"%{categoria}%")
+        where += " AND categoria ILIKE %s"
+        params.append(f"%{categoria}%")
     return db_query(f"SELECT * FROM medicamentos {where} ORDER BY nombre", params)
 
 
@@ -718,10 +1013,26 @@ async def create_medicine(request: Request):
         INSERT INTO medicamentos (codigo,nombre,presentacion,concentracion,categoria,precio,stock,stock_minimo,fecha_vencimiento,estado)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
         """,
-        [data.get("codigo"), data.get("nombre"), data.get("presentacion"), data.get("concentracion"), data.get("categoria"), data.get("precio") or 0, data.get("stock") or 0, data.get("stock_minimo") or 5, data.get("fecha_vencimiento") or None, data.get("estado", "Disponible")],
+        [
+            data.get("codigo"),
+            data.get("nombre"),
+            data.get("presentacion"),
+            data.get("concentracion"),
+            data.get("categoria"),
+            data.get("precio") or 0,
+            data.get("stock") or 0,
+            data.get("stock_minimo") or 5,
+            data.get("fecha_vencimiento") or None,
+            data.get("estado", "Disponible"),
+        ],
         fetch="one",
     )
-    log_activity(data.get("usuario_id"), "Farmacia", "Registro", f"Se registró medicamento {med['nombre']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Farmacia",
+        "Registro",
+        f"Se registró medicamento {med['nombre']}.",
+    )
     return created(med)
 
 
@@ -733,12 +1044,29 @@ async def update_medicine(medicine_id: int, request: Request):
         UPDATE medicamentos SET codigo=%s,nombre=%s,presentacion=%s,concentracion=%s,categoria=%s,precio=%s,stock=%s,stock_minimo=%s,fecha_vencimiento=%s,estado=%s,actualizado_en=NOW()
         WHERE id=%s RETURNING *
         """,
-        [data.get("codigo"), data.get("nombre"), data.get("presentacion"), data.get("concentracion"), data.get("categoria"), data.get("precio") or 0, data.get("stock") or 0, data.get("stock_minimo") or 5, data.get("fecha_vencimiento") or None, data.get("estado", "Disponible"), medicine_id],
+        [
+            data.get("codigo"),
+            data.get("nombre"),
+            data.get("presentacion"),
+            data.get("concentracion"),
+            data.get("categoria"),
+            data.get("precio") or 0,
+            data.get("stock") or 0,
+            data.get("stock_minimo") or 5,
+            data.get("fecha_vencimiento") or None,
+            data.get("estado", "Disponible"),
+            medicine_id,
+        ],
         fetch="one",
     )
     if not med:
         raise HTTPException(status_code=404, detail="Medicamento no encontrado.")
-    log_activity(data.get("usuario_id"), "Farmacia", "Actualización", f"Se actualizó medicamento {med['nombre']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Farmacia",
+        "Actualización",
+        f"Se actualizó medicamento {med['nombre']}.",
+    )
     return med
 
 
@@ -767,31 +1095,74 @@ async def create_sale(request: Request):
     data = await request.json()
     items = data.get("items") or []
     if not items:
-        raise HTTPException(status_code=400, detail="Agrega al menos un medicamento para registrar la venta.")
+        raise HTTPException(
+            status_code=400,
+            detail="Agrega al menos un medicamento para registrar la venta.",
+        )
     total = 0.0
     checked = []
     for item in items:
-        med = db_query("SELECT * FROM medicamentos WHERE id=%s", [item.get("medicamento_id")], fetch="one")
+        med = db_query(
+            "SELECT * FROM medicamentos WHERE id=%s",
+            [item.get("medicamento_id")],
+            fetch="one",
+        )
         qty = int(item.get("cantidad") or 0)
         if not med or qty <= 0:
-            raise HTTPException(status_code=400, detail="Medicamento o cantidad inválida.")
+            raise HTTPException(
+                status_code=400, detail="Medicamento o cantidad inválida."
+            )
         if med["stock"] < qty:
-            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {med['nombre']}. Disponible: {med['stock']}.")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Stock insuficiente para {med['nombre']}. Disponible: {med['stock']}.",
+            )
         subtotal = float(med["precio"] or 0) * qty
         total += subtotal
         checked.append((med, qty, subtotal))
     venta = db_query(
         "INSERT INTO ventas_farmacia (paciente_id, usuario_id, observacion, total) VALUES (%s,%s,%s,%s) RETURNING *",
-        [data.get("paciente_id"), data.get("usuario_id"), data.get("observacion"), total],
+        [
+            data.get("paciente_id"),
+            data.get("usuario_id"),
+            data.get("observacion"),
+            total,
+        ],
         fetch="one",
     )
     for med, qty, subtotal in checked:
-        db_query("INSERT INTO venta_detalle (venta_id, medicamento_id, cantidad, precio_unitario, subtotal) VALUES (%s,%s,%s,%s,%s)", [venta["id"], med["id"], qty, med["precio"], subtotal], fetch="none")
+        db_query(
+            "INSERT INTO venta_detalle (venta_id, medicamento_id, cantidad, precio_unitario, subtotal) VALUES (%s,%s,%s,%s,%s)",
+            [venta["id"], med["id"], qty, med["precio"], subtotal],
+            fetch="none",
+        )
         new_stock = med["stock"] - qty
-        estado = "Agotado" if new_stock == 0 else ("Bajo stock" if new_stock <= med["stock_minimo"] else "Disponible")
-        db_query("UPDATE medicamentos SET stock=%s, estado=%s, actualizado_en=NOW() WHERE id=%s", [new_stock, estado, med["id"]], fetch="none")
-        db_query("INSERT INTO movimientos_stock (medicamento_id,tipo,cantidad,motivo,usuario_id) VALUES (%s,'Salida',%s,%s,%s)", [med["id"], qty, f"Venta registrada #{venta['id']}", data.get("usuario_id")], fetch="none")
-    log_activity(data.get("usuario_id"), "Farmacia", "Venta", f"Se registró venta de farmacia por Bs {total:.2f}.")
+        estado = (
+            "Agotado"
+            if new_stock == 0
+            else ("Bajo stock" if new_stock <= med["stock_minimo"] else "Disponible")
+        )
+        db_query(
+            "UPDATE medicamentos SET stock=%s, estado=%s, actualizado_en=NOW() WHERE id=%s",
+            [new_stock, estado, med["id"]],
+            fetch="none",
+        )
+        db_query(
+            "INSERT INTO movimientos_stock (medicamento_id,tipo,cantidad,motivo,usuario_id) VALUES (%s,'Salida',%s,%s,%s)",
+            [
+                med["id"],
+                qty,
+                f"Venta registrada #{venta['id']}",
+                data.get("usuario_id"),
+            ],
+            fetch="none",
+        )
+    log_activity(
+        data.get("usuario_id"),
+        "Farmacia",
+        "Venta",
+        f"Se registró venta de farmacia por Bs {total:.2f}.",
+    )
     return created(venta)
 
 
@@ -805,46 +1176,73 @@ async def update_sale(sale_id: int, request: Request):
     )
     if not sale:
         raise HTTPException(status_code=404, detail="Venta no encontrada.")
-    log_activity(data.get("usuario_id"), "Ventas", "Corrección", f"Administración corrigió la venta #{sale_id}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Ventas",
+        "Corrección",
+        f"Administración corrigió la venta #{sale_id}.",
+    )
     return sale
 
 
 @app.post("/api/pharmacy/issues")
 async def pharmacy_issue(request: Request):
     data = await request.json()
-    admins = db_query("SELECT u.id FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE r.nombre='Administrador' AND u.estado='Activo'")
+    admins = db_query(
+        "SELECT u.id FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE r.nombre='Administrador' AND u.estado='Activo'"
+    )
     for admin in admins:
         db_query(
             """
             INSERT INTO notificaciones (usuario_destino_id, destinatario, asunto, mensaje, canal, estado, tipo, leida)
             VALUES (%s,'Administrador','Revisión solicitada por farmacia',%s,'Sistema interno','Enviada','ERROR_FARMACIA',false)
             """,
-            [admin["id"], f"Motivo: {data.get('motivo')}. Detalle: {data.get('detalle')}"],
+            [
+                admin["id"],
+                f"Motivo: {data.get('motivo')}. Detalle: {data.get('detalle')}",
+            ],
             fetch="none",
         )
-    log_activity(data.get("usuario_id"), "Farmacia", "Solicitud de revisión", f"Farmacia solicitó revisión: {data.get('motivo')}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Farmacia",
+        "Solicitud de revisión",
+        f"Farmacia solicitó revisión: {data.get('motivo')}.",
+    )
     return {"ok": True}
 
 
 @app.get("/api/notifications")
-def notifications(usuario_id: Optional[str] = None, rol: str = "Administrador", paciente_id: Optional[str] = None, estado: str = "", unread_only: bool = False):
+def notifications(
+    usuario_id: Optional[str] = None,
+    rol: str = "Administrador",
+    paciente_id: Optional[str] = None,
+    estado: str = "",
+    unread_only: bool = False,
+):
     params: List[Any] = []
     where = "WHERE 1=1"
     if estado:
-        where += " AND n.estado=%s"; params.append(estado)
+        where += " AND n.estado=%s"
+        params.append(estado)
     if unread_only:
         where += " AND n.leida=false"
     if not usuario_id and paciente_id:
-        where += " AND n.paciente_id=%s"; params.append(paciente_id)
+        where += " AND n.paciente_id=%s"
+        params.append(paciente_id)
     elif usuario_id:
         if rol == "Paciente" and paciente_id:
-            where += " AND (n.usuario_destino_id=%s OR n.paciente_id=%s)"; params += [usuario_id, paciente_id]
+            where += " AND (n.usuario_destino_id=%s OR n.paciente_id=%s)"
+            params += [usuario_id, paciente_id]
         elif rol == "Administrador":
-            where += " AND (n.usuario_destino_id=%s OR n.tipo IN ('ERROR_FARMACIA','SISTEMA'))"; params.append(usuario_id)
+            where += " AND (n.usuario_destino_id=%s OR n.tipo IN ('ERROR_FARMACIA','SISTEMA'))"
+            params.append(usuario_id)
         elif rol == "Farmacia":
-            where += " AND (n.usuario_destino_id=%s OR n.tipo='RECETA_FARMACIA')"; params.append(usuario_id)
+            where += " AND (n.usuario_destino_id=%s OR n.tipo='RECETA_FARMACIA')"
+            params.append(usuario_id)
         else:
-            where += " AND (n.usuario_destino_id=%s OR n.tipo='RECORDATORIO_CITA')"; params.append(usuario_id)
+            where += " AND (n.usuario_destino_id=%s OR n.tipo='RECORDATORIO_CITA')"
+            params.append(usuario_id)
     return db_query(
         f"""
         SELECT n.*, p.nombre || ' ' || p.apellido AS paciente
@@ -857,13 +1255,21 @@ def notifications(usuario_id: Optional[str] = None, rol: str = "Administrador", 
 
 
 @app.get("/api/notifications/count")
-def notifications_count(usuario_id: Optional[str] = None, rol: str = "Administrador", paciente_id: Optional[str] = None):
+def notifications_count(
+    usuario_id: Optional[str] = None,
+    rol: str = "Administrador",
+    paciente_id: Optional[str] = None,
+):
     return {"total": len(notifications(usuario_id, rol, paciente_id, unread_only=True))}
 
 
 @app.patch("/api/notifications/{notification_id}/read")
 def mark_notification_read(notification_id: int):
-    row = db_query("UPDATE notificaciones SET leida=true WHERE id=%s RETURNING *", [notification_id], fetch="one")
+    row = db_query(
+        "UPDATE notificaciones SET leida=true WHERE id=%s RETURNING *",
+        [notification_id],
+        fetch="one",
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Notificación no encontrada.")
     return row
@@ -875,23 +1281,46 @@ async def mark_all_notifications_read(request: Request):
     usuario_id = data.get("usuario_id")
     paciente_id = data.get("paciente_id")
     if paciente_id:
-        db_query("UPDATE notificaciones SET leida=true WHERE usuario_destino_id=%s OR paciente_id=%s", [usuario_id, paciente_id], fetch="none")
+        db_query(
+            "UPDATE notificaciones SET leida=true WHERE usuario_destino_id=%s OR paciente_id=%s",
+            [usuario_id, paciente_id],
+            fetch="none",
+        )
     else:
-        db_query("UPDATE notificaciones SET leida=true WHERE usuario_destino_id=%s", [usuario_id], fetch="none")
+        db_query(
+            "UPDATE notificaciones SET leida=true WHERE usuario_destino_id=%s",
+            [usuario_id],
+            fetch="none",
+        )
     return {"ok": True}
 
 
 @app.post("/api/notifications/process-queue")
 async def process_queue(request: Request):
     data = await request.json()
-    items = db_query("SELECT * FROM cola_mensajes WHERE estado='Pendiente' ORDER BY creado_en ASC LIMIT 20")
+    items = db_query(
+        "SELECT * FROM cola_mensajes WHERE estado='Pendiente' ORDER BY creado_en ASC LIMIT 20"
+    )
     processed = 0
     for item in items:
         if item["tipo"] == "RECORDATORIO_CITA" and item["referencia_id"]:
-            db_query("UPDATE notificaciones SET estado='Enviada', enviado_en=NOW() WHERE id=%s", [item["referencia_id"]], fetch="none")
-        db_query("UPDATE cola_mensajes SET estado='Procesado', intentos=intentos+1, procesado_en=NOW() WHERE id=%s", [item["id"]], fetch="none")
+            db_query(
+                "UPDATE notificaciones SET estado='Enviada', enviado_en=NOW() WHERE id=%s",
+                [item["referencia_id"]],
+                fetch="none",
+            )
+        db_query(
+            "UPDATE cola_mensajes SET estado='Procesado', intentos=intentos+1, procesado_en=NOW() WHERE id=%s",
+            [item["id"]],
+            fetch="none",
+        )
         processed += 1
-    log_activity(data.get("usuario_id"), "Notificaciones", "Procesar cola", f"Se procesaron {processed} mensajes de la cola.")
+    log_activity(
+        data.get("usuario_id"),
+        "Notificaciones",
+        "Procesar cola",
+        f"Se procesaron {processed} mensajes de la cola.",
+    )
     return {"processed": processed}
 
 
@@ -901,13 +1330,20 @@ def queue_items():
 
 
 @app.get("/api/reports/appointments")
-def report_appointments(from_: str = Query("2026-06-01", alias="from"), to: str = "2026-06-30", estado: str = "", medico_id: Optional[str] = None):
+def report_appointments(
+    from_: str = Query("2026-06-01", alias="from"),
+    to: str = "2026-06-30",
+    estado: str = "",
+    medico_id: Optional[str] = None,
+):
     params: List[Any] = [from_, to]
     where = "WHERE c.fecha BETWEEN %s AND %s"
     if estado:
-        where += " AND c.estado=%s"; params.append(estado)
+        where += " AND c.estado=%s"
+        params.append(estado)
     if medico_id:
-        where += " AND c.medico_id=%s"; params.append(medico_id)
+        where += " AND c.medico_id=%s"
+        params.append(medico_id)
     rows = db_query(
         f"""
         SELECT c.fecha, c.hora, c.estado, c.motivo,
@@ -923,7 +1359,10 @@ def report_appointments(from_: str = Query("2026-06-01", alias="from"), to: str 
         """,
         params,
     )
-    summary = db_query(f"SELECT c.estado, COUNT(*)::int AS total FROM citas c {where} GROUP BY c.estado", params)
+    summary = db_query(
+        f"SELECT c.estado, COUNT(*)::int AS total FROM citas c {where} GROUP BY c.estado",
+        params,
+    )
     by_doctor = db_query(
         f"""
         SELECT m.nombre || ' ' || m.apellido AS medico, COUNT(*)::int AS total
@@ -936,7 +1375,9 @@ def report_appointments(from_: str = Query("2026-06-01", alias="from"), to: str 
 
 
 @app.get("/api/reports/pharmacy")
-def report_pharmacy(from_: str = Query("2026-06-01", alias="from"), to: str = "2026-06-30"):
+def report_pharmacy(
+    from_: str = Query("2026-06-01", alias="from"), to: str = "2026-06-30"
+):
     sales_rows = sales(from_, to)
     top = db_query(
         """
@@ -947,7 +1388,11 @@ def report_pharmacy(from_: str = Query("2026-06-01", alias="from"), to: str = "2
         """,
         [from_, to],
     )
-    return {"sales": sales_rows, "top": top, "total": sum(float(x["total"] or 0) for x in sales_rows)}
+    return {
+        "sales": sales_rows,
+        "top": top,
+        "total": sum(float(x["total"] or 0) for x in sales_rows),
+    }
 
 
 @app.get("/api/roles")
@@ -990,17 +1435,41 @@ async def create_user(request: Request):
         INSERT INTO usuarios (rol_id,nombre,apellido,correo,password_hash,estado,foto_url,paciente_id,medico_id)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id, nombre, apellido, correo, estado, foto_url, paciente_id, medico_id
         """,
-        [data.get("rol_id"), validate_name(data.get("nombre"), "Nombre"), validate_name(data.get("apellido"), "Apellido"), data.get("correo"), sha256(data.get("password")), data.get("estado", "Activo"), data.get("foto_url"), data.get("paciente_id") or None, data.get("medico_id") or None],
+        [
+            data.get("rol_id"),
+            validate_name(data.get("nombre"), "Nombre"),
+            validate_name(data.get("apellido"), "Apellido"),
+            data.get("correo"),
+            sha256(data.get("password")),
+            data.get("estado", "Activo"),
+            data.get("foto_url"),
+            data.get("paciente_id") or None,
+            data.get("medico_id") or None,
+        ],
         fetch="one",
     )
-    log_activity(data.get("usuario_id"), "Usuarios", "Registro", f"Se creó el usuario {user['correo']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Usuarios",
+        "Registro",
+        f"Se creó el usuario {user['correo']}.",
+    )
     return created(user)
 
 
 @app.put("/api/users/{user_id}")
 async def update_user(user_id: int, request: Request):
     data = await request.json()
-    params = [data.get("rol_id"), validate_name(data.get("nombre"), "Nombre"), validate_name(data.get("apellido"), "Apellido"), data.get("correo"), data.get("estado", "Activo"), data.get("foto_url"), data.get("paciente_id") or None, data.get("medico_id") or None]
+    params = [
+        data.get("rol_id"),
+        validate_name(data.get("nombre"), "Nombre"),
+        validate_name(data.get("apellido"), "Apellido"),
+        data.get("correo"),
+        data.get("estado", "Activo"),
+        data.get("foto_url"),
+        data.get("paciente_id") or None,
+        data.get("medico_id") or None,
+    ]
     sql = """
         UPDATE usuarios SET rol_id=%s,nombre=%s,apellido=%s,correo=%s,estado=%s,foto_url=%s,paciente_id=%s,medico_id=%s
     """
@@ -1012,17 +1481,31 @@ async def update_user(user_id: int, request: Request):
     user = db_query(sql, params, fetch="one")
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    log_activity(data.get("usuario_id"), "Usuarios", "Actualización", f"Se actualizó el usuario {user['correo']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Usuarios",
+        "Actualización",
+        f"Se actualizó el usuario {user['correo']}.",
+    )
     return user
 
 
 @app.patch("/api/users/{user_id}/status")
 async def user_status(user_id: int, request: Request):
     data = await request.json()
-    user = db_query("UPDATE usuarios SET estado=%s WHERE id=%s RETURNING id,nombre,apellido,correo,estado", [data.get("estado"), user_id], fetch="one")
+    user = db_query(
+        "UPDATE usuarios SET estado=%s WHERE id=%s RETURNING id,nombre,apellido,correo,estado",
+        [data.get("estado"), user_id],
+        fetch="one",
+    )
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    log_activity(data.get("usuario_id"), "Usuarios", "Cambio de estado", f"El usuario {user['correo']} ahora está {user['estado']}.")
+    log_activity(
+        data.get("usuario_id"),
+        "Usuarios",
+        "Cambio de estado",
+        f"El usuario {user['correo']} ahora está {user['estado']}.",
+    )
     return user
 
 
@@ -1035,7 +1518,13 @@ async def update_profile(user_id: int, request: Request):
         WHERE id=%s RETURNING id, nombre, apellido, correo, estado, foto_url, paciente_id, medico_id,
         (SELECT nombre FROM roles WHERE id=usuarios.rol_id) AS rol
         """,
-        [validate_name(data.get("nombre"), "Nombre"), validate_name(data.get("apellido"), "Apellido"), data.get("correo"), data.get("foto_url"), user_id],
+        [
+            validate_name(data.get("nombre"), "Nombre"),
+            validate_name(data.get("apellido"), "Apellido"),
+            data.get("correo"),
+            data.get("foto_url"),
+            user_id,
+        ],
         fetch="one",
     )
     if not user:
@@ -1046,9 +1535,13 @@ async def update_profile(user_id: int, request: Request):
 
 
 @app.post("/api/upload/profile")
-async def upload_profile(file: UploadFile = File(...), usuario_id: Optional[int] = Form(None)):
+async def upload_profile(
+    file: UploadFile = File(...), usuario_id: Optional[int] = Form(None)
+):
     if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Solo se permiten imágenes para la foto de perfil.")
+        raise HTTPException(
+            status_code=400, detail="Solo se permiten imágenes para la foto de perfil."
+        )
     ext = Path(file.filename or "foto.png").suffix.lower() or ".png"
     name = f"perfil_{usuario_id or 'user'}_{int(datetime.now().timestamp())}{ext}"
     target = PROFILE_DIR / name
@@ -1056,12 +1549,21 @@ async def upload_profile(file: UploadFile = File(...), usuario_id: Optional[int]
         shutil.copyfileobj(file.file, buffer)
     url = f"/uploads/perfiles/{name}"
     if usuario_id:
-        db_query("UPDATE usuarios SET foto_url=%s WHERE id=%s", [url, usuario_id], fetch="none")
+        db_query(
+            "UPDATE usuarios SET foto_url=%s WHERE id=%s",
+            [url, usuario_id],
+            fetch="none",
+        )
     return {"url": url}
 
 
 @app.post("/api/upload/clinical")
-async def upload_clinical(expediente_id: int = Form(...), usuario_id: Optional[int] = Form(None), descripcion: str = Form("Archivo clínico adjunto"), file: UploadFile = File(...)):
+async def upload_clinical(
+    expediente_id: int = Form(...),
+    usuario_id: Optional[int] = Form(None),
+    descripcion: str = Form("Archivo clínico adjunto"),
+    file: UploadFile = File(...),
+):
     safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", file.filename or "archivo.pdf")
     name = f"exp_{expediente_id}_{int(datetime.now().timestamp())}_{safe_name}"
     target = CLINICAL_DIR / name
@@ -1073,7 +1575,12 @@ async def upload_clinical(expediente_id: int = Form(...), usuario_id: Optional[i
         [expediente_id, file.filename, file.content_type, url, descripcion, usuario_id],
         fetch="one",
     )
-    log_activity(usuario_id, "Expediente clínico", "Archivo", f"Se adjuntó archivo clínico {file.filename}.")
+    log_activity(
+        usuario_id,
+        "Expediente clínico",
+        "Archivo",
+        f"Se adjuntó archivo clínico {file.filename}.",
+    )
     return row
 
 
@@ -1082,12 +1589,15 @@ def logs(rol: str = "", modulo: str = "", search: str = ""):
     params: List[Any] = []
     where = "WHERE 1=1"
     if rol:
-        where += " AND r.nombre=%s"; params.append(rol)
+        where += " AND r.nombre=%s"
+        params.append(rol)
     if modulo:
-        where += " AND l.modulo ILIKE %s"; params.append(f"%{modulo}%")
+        where += " AND l.modulo ILIKE %s"
+        params.append(f"%{modulo}%")
     if search:
         where += " AND (l.detalle ILIKE %s OR l.accion ILIKE %s OR COALESCE(u.nombre || ' ' || u.apellido,'Sistema') ILIKE %s)"
-        term = f"%{search}%"; params += [term, term, term]
+        term = f"%{search}%"
+        params += [term, term, term]
     return db_query(
         f"""
         SELECT l.*, COALESCE(u.nombre || ' ' || u.apellido, 'Sistema') AS usuario, COALESCE(r.nombre, 'Sistema') AS rol
@@ -1106,10 +1616,16 @@ def patient_panel(patient_id: int):
     record = medical_record(patient_id)
     citas = appointments(paciente_id=patient_id, sort="proximas")
     notifs = notifications(paciente_id=patient_id, rol="Paciente")
-    return {"paciente": record["paciente"], "expediente": record, "citas": citas, "notificaciones": notifs}
+    return {
+        "paciente": record["paciente"],
+        "expediente": record,
+        "citas": citas,
+        "notificaciones": notifs,
+    }
 
 
 if FRONTEND_DIST.exists():
+
     @app.get("/", include_in_schema=False)
     def serve_frontend_index():
         return FileResponse(
@@ -1121,5 +1637,9 @@ if FRONTEND_DIST.exists():
             },
         )
 
-    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets")
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+    app.mount(
+        "/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets"
+    )
+    app.mount(
+        "/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend"
+    )
